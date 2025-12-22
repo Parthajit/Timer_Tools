@@ -1,6 +1,7 @@
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
-// Fix: Modular imports are replaced with the compat instances from lib/firebase.ts to resolve "no exported member" errors.
+// Fix: Use the initialized auth and db instances from the compat SDK instead of modular exports
+// modular exports from 'firebase/auth' and 'firebase/firestore' cause errors in compat mode.
 import { auth, db } from '../lib/firebase';
 import { generateMockData } from '../utils/analytics';
 
@@ -31,12 +32,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Fix: Using compat onAuthStateChanged listener on the auth instance to avoid named export errors.
+    // Fix: Using auth.onAuthStateChanged (compat/v8 style) instead of the modular standalone function
     const unsubscribe = auth.onAuthStateChanged(async (firebaseUser) => {
       if (firebaseUser) {
-        // Fix: Use v8-compatible collection().doc().get() syntax.
-        const userDoc = await db.collection('users').doc(firebaseUser.uid).get();
+        // Fix: Using db.collection('users').doc(...) (compat/v8 style)
+        const userRef = db.collection('users').doc(firebaseUser.uid);
+        const userDoc = await userRef.get();
 
+        // Fix: In v8/compat, .exists is a property, not a method
         if (userDoc.exists) {
           setUser(userDoc.data() as UserData);
         } else {
@@ -64,12 +67,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const login = async (email: string, password = 'password123') => {
-    // Fix: Use compat signInWithEmailAndPassword.
+    // Fix: Using auth.signInWithEmailAndPassword (compat/v8 style)
     await auth.signInWithEmailAndPassword(email, password);
   };
 
   const signup = async (email: string, password = 'password123') => {
-      // Fix: Use compat createUserWithEmailAndPassword.
+      // Fix: Using auth.createUserWithEmailAndPassword (compat/v8 style)
       const result = await auth.createUserWithEmailAndPassword(email, password);
       if (!result.user) throw new Error("Signup failed");
 
@@ -81,18 +84,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           createdAt: new Date().toISOString()
       };
       
-      // Fix: Use v8-compatible collection().doc().set() syntax.
+      // Fix: Using db.collection('users').doc(...).set(...) (compat/v8 style)
       await db.collection('users').doc(result.user.uid).set(newUser);
       setUser(newUser);
   }
 
   const logout = () => {
-    // Fix: Use compat signOut.
+    // Fix: Using auth.signOut() (compat/v8 style)
     auth.signOut();
   };
 
   const resetPassword = async (email: string) => {
-    // Fix: Use compat sendPasswordResetEmail.
+    // Fix: Using auth.sendPasswordResetEmail (compat/v8 style)
     await auth.sendPasswordResetEmail(email);
   };
 
@@ -105,7 +108,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const updatedUser: UserData = { ...user, plan: 'trial', trialEndDate: endDateStr };
     
     try {
-      // Fix: Use v8-compatible collection().doc().update() syntax.
+      // Fix: Using db.collection('users').doc(...).update(...) (compat/v8 style)
       await db.collection('users').doc(user.id).update({
         plan: 'trial',
         trialEndDate: endDateStr
@@ -120,7 +123,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!user) return;
     const updatedUser: UserData = { ...user, plan: 'pro', trialEndDate: undefined };
     try {
-      // Fix: Use v8-compatible collection().doc().update() syntax.
+      // Fix: Using db.collection('users').doc(...).update(...) (compat/v8 style)
       await db.collection('users').doc(user.id).update({
         plan: 'pro',
         trialEndDate: null 

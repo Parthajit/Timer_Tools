@@ -1,6 +1,6 @@
 
 import { db, auth } from '../lib/firebase';
-// Fix: Removed modular firestore imports to resolve "no exported member" errors by using the compat API provided via the db instance.
+// Fix: Removing modular firestore imports as we use the compat/v8 instances from lib/firebase.ts
 
 export interface TimerSession {
   id: string;
@@ -30,7 +30,7 @@ export const logSession = async (
 
   if (user) {
       try {
-          // Fix: Use v8-compatible collection().add() syntax to resolve modular import errors.
+          // Fix: Using db.collection(...).add(...) (compat/v8 style) instead of modular addDoc(collection(...))
           await db.collection('timer_sessions').add({
               ...sessionData,
               user_id: user.uid,
@@ -53,9 +53,10 @@ export const getSessions = async (): Promise<TimerSession[]> => {
 
   if (user) {
       try {
-          // Fix: Use v8-compatible collection().where().get() syntax.
-          const q = db.collection('timer_sessions').where('user_id', '==', user.uid);
-          const querySnapshot = await q.get();
+          // Fix: Using db.collection(...).where(...).get() (compat/v8 style) instead of modular query and getDocs
+          const querySnapshot = await db.collection('timer_sessions')
+            .where('user_id', '==', user.uid)
+            .get();
           
           const sessions: TimerSession[] = [];
           querySnapshot.forEach((doc) => {
