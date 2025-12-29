@@ -7,18 +7,29 @@ import {
 } from 'recharts';
 import { 
   Clock, Activity, TrendingUp, 
-  Timer, Watch, Hourglass, Filter
+  Timer, Watch, Hourglass, Calendar, Settings2, ChevronRight
 } from 'lucide-react';
 
-type ToolType = 'stopwatch' | 'countdown' | 'laptimer' | 'interval';
+type ToolType = 'stopwatch' | 'countdown' | 'laptimer' | 'interval' | 'chess';
+type RangeMode = 'week' | 'month' | 'custom';
 
 const Dashboard: React.FC = () => {
   const { user } = useAuth();
   const [selectedTool, setSelectedTool] = useState<ToolType>('stopwatch');
-  const [viewMode, setViewMode] = useState<'week' | 'month'>('week');
+  const [rangeMode, setRangeMode] = useState<RangeMode>('week');
+  
+  // Date states
+  const [startDate, setStartDate] = useState<string>(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 7);
+    return d.toISOString().split('T')[0];
+  });
+  const [endDate, setEndDate] = useState<string>(() => {
+    return new Date().toISOString().split('T')[0];
+  });
+
   const [sessions, setSessions] = useState<TimerSession[]>([]);
 
-  // Load data asynchronously
   useEffect(() => {
     const loadData = async () => {
         const data = await getSessions();
@@ -27,20 +38,43 @@ const Dashboard: React.FC = () => {
     loadData();
   }, [user]);
 
-  // 1. Filter Sessions based on selection
+  const handlePresetChange = (mode: RangeMode) => {
+    setRangeMode(mode);
+    const end = new Date();
+    const start = new Date();
+    
+    if (mode === 'week') {
+      start.setDate(end.getDate() - 7);
+    } else if (mode === 'month') {
+      start.setDate(end.getDate() - 30);
+    } else {
+      return; // Custom doesn't auto-update start/end
+    }
+    
+    setStartDate(start.toISOString().split('T')[0]);
+    setEndDate(end.toISOString().split('T')[0]);
+  };
+
+  const handleDateChange = (type: 'start' | 'end', value: string) => {
+    setRangeMode('custom');
+    if (type === 'start') setStartDate(value);
+    else setEndDate(value);
+  };
+
   const filteredSessions = useMemo(() => {
-    const now = new Date();
-    const rangeDays = viewMode === 'week' ? 7 : 30;
-    const startDate = new Date();
-    startDate.setDate(now.getDate() - rangeDays);
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    end.setHours(23, 59, 59, 999);
 
     return sessions
         .filter(s => s.tool === selectedTool)
-        .filter(s => new Date(s.started_at) >= startDate)
+        .filter(s => {
+            const sessionDate = new Date(s.started_at);
+            return sessionDate >= start && sessionDate <= end;
+        })
         .sort((a, b) => new Date(b.started_at).getTime() - new Date(a.started_at).getTime());
-  }, [sessions, selectedTool, viewMode]);
+  }, [sessions, selectedTool, startDate, endDate]);
 
-  // Helper for HMS format
   const formatDurationHMS = (ms: number) => {
     const hours = Math.floor(ms / 3600000);
     const minutes = Math.floor((ms % 3600000) / 60000);
@@ -48,21 +82,17 @@ const Dashboard: React.FC = () => {
     return `${hours} : ${minutes.toString().padStart(2, '0')} : ${seconds.toString().padStart(2, '0')}`;
   };
 
-  // 2. Aggregate Data for Charts & Stats
   const { chartData, stats, insight } = useMemo(() => {
-    // Generate buckets (days)
-    const now = new Date();
-    const rangeDays = viewMode === 'week' ? 7 : 30;
+    const start = new Date(startDate);
+    const end = new Date(endDate);
     const daysMap = new Map();
     
-    // Initialize map
-    for (let i = rangeDays - 1; i >= 0; i--) {
-        const d = new Date();
-        d.setDate(now.getDate() - i);
-        const dateKey = d.toISOString().split('T')[0];
+    const tempDate = new Date(start);
+    while (tempDate <= end) {
+        const dateKey = tempDate.toISOString().split('T')[0];
         daysMap.set(dateKey, {
             date: dateKey,
-            displayDate: d.toLocaleDateString('en-US', { day: 'numeric', month: 'short' }),
+            displayDate: tempDate.toLocaleDateString('en-US', { day: 'numeric', month: 'short' }),
             count: 0,
             duration: 0,
             completed: 0,
@@ -72,6 +102,7 @@ const Dashboard: React.FC = () => {
             rounds: 0,
             lapCount: 0
         });
+        tempDate.setDate(tempDate.getDate() + 1);
     }
 
     let totalDuration = 0;
@@ -83,7 +114,6 @@ const Dashboard: React.FC = () => {
     let avgLapSum = 0;
     let totalRounds = 0;
 
-    // Fill map with data
     filteredSessions.forEach(s => {
         const dateKey = s.started_at.split('T')[0];
         if (daysMap.has(dateKey)) {
@@ -92,51 +122,30 @@ const Dashboard: React.FC = () => {
             entry.duration += s.duration;
             totalDuration += s.duration;
             totalCount += 1;
-
             const meta = s.metadata || {};
-            
             if (selectedTool === 'countdown') {
-                if (meta.completed) {
-                    entry.completed += 1;
-                    totalCompleted += 1;
-                }
-                entry.pauses += (meta.pauses || 0);
-                totalPauses += (meta.pauses || 0);
+                if (meta.completed) { entry.completed += 1; totalCompleted += 1; }
+                entry.pauses += (meta.pauses || 0); totalPauses += (meta.pauses || 0);
             }
             if (selectedTool === 'laptimer') {
-                const laps = meta.lapCount || 0;
-                entry.lapCount += laps;
-                totalLaps += laps;
-                entry.avgLap += (meta.averageLap || 0); 
-                entry.consistency += (meta.consistency || 0);
-                avgLapSum += (meta.averageLap || 0);
-                consistencySum += (meta.consistency || 0);
+                const laps = meta.lapCount || 0; entry.lapCount += laps; totalLaps += laps;
+                entry.avgLap += (meta.averageLap || 0); entry.consistency += (meta.consistency || 0);
+                avgLapSum += (meta.averageLap || 0); consistencySum += (meta.consistency || 0);
             }
-            if (selectedTool === 'interval') {
-                entry.rounds += (meta.rounds_completed || 0);
-                totalRounds += (meta.rounds_completed || 0);
-            }
+            if (selectedTool === 'interval') { entry.rounds += (meta.rounds_completed || 0); totalRounds += (meta.rounds_completed || 0); }
         }
     });
 
-    // Format for Recharts
-    const data = Array.from(daysMap.values()).map(day => {
-        return {
-            name: day.displayDate,
-            sessions: day.count,
-            minutes: parseFloat((day.duration / 60000).toFixed(1)),
-            hours: parseFloat((day.duration / 3600000).toFixed(2)),
-            conversionRate: day.count > 0 ? parseFloat(((day.completed / day.count) * 100).toFixed(1)) : 0,
-            avgPauses: day.count > 0 ? parseFloat((day.pauses / day.count).toFixed(1)) : 0,
-            avgLapSeconds: day.count > 0 ? parseFloat((day.avgLap / day.count / 1000).toFixed(2)) : 0,
-            consistencyScore: day.count > 0 ? parseFloat((day.consistency / day.count / 1000).toFixed(2)) : 0,
-            totalRounds: day.rounds
-        };
-    });
+    const data = Array.from(daysMap.values()).map(day => ({
+        name: day.displayDate,
+        sessions: day.count,
+        hours: parseFloat((day.duration / 3600000).toFixed(2)),
+        conversionRate: day.count > 0 ? parseFloat(((day.completed / day.count) * 100).toFixed(1)) : 0,
+        avgLapSeconds: day.count > 0 ? parseFloat((day.avgLap / day.count / 1000).toFixed(2)) : 0,
+        totalRounds: day.rounds
+    }));
 
-    // Calculate Stats
     const totalTimeFormatted = formatDurationHMS(totalDuration);
-    
     const statsObj = {
         totalSessions: totalCount,
         totalTimeFormatted,
@@ -145,241 +154,190 @@ const Dashboard: React.FC = () => {
         metric3: { label: '', value: '' }
     };
 
-    let insightText = "Start tracking your time to see insights here.";
-    if (totalCount > 0) {
-        insightText = `You've logged ${totalCount} sessions totaling ${totalTimeFormatted} in the last ${rangeDays} days.`;
-    }
-
     if (selectedTool === 'stopwatch') {
         statsObj.metric1 = { label: 'Total Frequency', value: totalCount.toString() };
         statsObj.metric2 = { label: 'Accumulated Time', value: totalTimeFormatted };
-        
-        const avgDuration = totalCount > 0 ? totalDuration / totalCount : 0;
-        statsObj.metric3 = { label: 'Avg Duration', value: formatDurationHMS(avgDuration) };
-        
-        if (totalCount > 5) insightText += " Excellent consistency!";
+        statsObj.metric3 = { label: 'Avg Duration', value: formatDurationHMS(totalCount > 0 ? totalDuration / totalCount : 0) };
     } else if (selectedTool === 'countdown') {
-        const cr = totalCount > 0 ? ((totalCompleted / totalCount) * 100).toFixed(1) : '0';
-        const ctr = totalCount > 0 ? (totalPauses / totalCount).toFixed(1) : '0';
-        statsObj.metric1 = { label: 'Completion Rate', value: `${cr}%` }; 
-        statsObj.metric2 = { label: 'Avg Interruptions', value: ctr };
-        statsObj.metric3 = { label: 'Total Focused Time', value: totalTimeFormatted };
-        if (parseFloat(cr) > 80) insightText = "Your completion rate is outstanding. Great focus!";
-        else if (parseFloat(cr) < 50 && totalCount > 0) insightText = "Try to minimize interruptions to boost your completion rate.";
+        statsObj.metric1 = { label: 'Completion Rate', value: `${totalCount > 0 ? ((totalCompleted / totalCount) * 100).toFixed(1) : '0'}%` }; 
+        statsObj.metric2 = { label: 'Avg Interruptions', value: totalCount > 0 ? (totalPauses / totalCount).toFixed(1) : '0' };
+        statsObj.metric3 = { label: 'Focused Time', value: totalTimeFormatted };
     } else if (selectedTool === 'laptimer') {
-        const avgL = totalCount > 0 ? (avgLapSum / totalCount) : 0;
-        const cons = totalCount > 0 ? (consistencySum / totalCount) : 0;
-        statsObj.metric1 = { label: 'Avg Lap Time', value: formatDurationHMS(avgL) };
-        statsObj.metric2 = { label: 'Consistency Score', value: formatDurationHMS(cons) };
+        statsObj.metric1 = { label: 'Avg Lap Time', value: formatDurationHMS(totalCount > 0 ? avgLapSum / totalCount : 0) };
+        statsObj.metric2 = { label: 'Consistency', value: formatDurationHMS(totalCount > 0 ? consistencySum / totalCount : 0) };
         statsObj.metric3 = { label: 'Total Laps', value: totalLaps.toString() };
-        insightText = `You've recorded ${totalLaps} laps. A lower consistency score means steadier pacing.`;
     } else if (selectedTool === 'interval') {
         statsObj.metric1 = { label: 'Total Rounds', value: totalRounds.toString() };
         statsObj.metric2 = { label: 'Workouts', value: totalCount.toString() };
         statsObj.metric3 = { label: 'Active Time', value: totalTimeFormatted };
-        insightText = `You've powered through ${totalRounds} rounds. Keep pushing your limits!`;
+    } else if (selectedTool === 'chess') {
+        statsObj.metric1 = { label: 'Games Played', value: totalCount.toString() };
+        statsObj.metric2 = { label: 'Total Playtime', value: totalTimeFormatted };
+        statsObj.metric3 = { label: 'Avg Game Length', value: formatDurationHMS(totalCount > 0 ? totalDuration / totalCount : 0) };
     }
 
-    return { chartData: data, stats: statsObj, insight: insightText };
-  }, [filteredSessions, selectedTool, viewMode]);
+    return { chartData: data, stats: statsObj, insight: totalCount > 0 ? `You've logged ${totalCount} sessions totaling ${totalTimeFormatted}.` : "No sessions found for this range." };
+  }, [filteredSessions, selectedTool, startDate, endDate]);
 
-  if (!user) {
-      return (
-          <div className="flex items-center justify-center h-[50vh]">
-              <p className="text-slate-500">Please log in to view analytics.</p>
-          </div>
-      )
-  }
+  if (!user) return <div className="flex items-center justify-center h-[50vh]"><p className="text-slate-500">Please log in to view analytics.</p></div>;
+
+  const modeStyles = {
+    week: 'bg-blue-600 text-white shadow-lg shadow-blue-600/30 border-blue-500',
+    month: 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/30 border-emerald-500',
+    custom: 'bg-violet-600 text-white shadow-lg shadow-violet-600/30 border-violet-500'
+  };
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
       
-      {/* Dashboard Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
+      {/* Dynamic Header */}
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-8 mb-12">
         <div>
-          <h1 className="text-3xl font-bold text-white">Analytics Dashboard</h1>
-          <p className="text-slate-400 mt-1">Deep dive into your timing habits.</p>
+          <h1 className="text-5xl font-black text-white tracking-tight mb-2">Analytics</h1>
+          <div className="flex items-center gap-2">
+            <p className="text-slate-400">Viewing performance for </p>
+            <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border ${
+              rangeMode === 'week' ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' :
+              rangeMode === 'month' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' :
+              'bg-violet-500/10 text-violet-400 border-violet-500/20'
+            }`}>
+              {rangeMode}
+            </span>
+          </div>
         </div>
         
-        <div className="flex flex-wrap items-center gap-3">
-            <div className="flex items-center gap-2 bg-white/5 p-1 rounded-xl border border-white/10 backdrop-blur-sm">
-                {(['stopwatch', 'countdown', 'laptimer', 'interval'] as ToolType[]).map(t => (
-                    <button
-                        key={t}
-                        onClick={() => setSelectedTool(t)}
-                        className={`px-3 py-2 rounded-lg text-sm font-semibold transition-all capitalize flex items-center gap-2 ${selectedTool === t ? 'bg-blue-500/20 text-blue-400' : 'text-slate-400 hover:text-slate-200'}`}
-                    >
-                        {t === 'stopwatch' && <Watch size={14} />}
-                        {t === 'countdown' && <Timer size={14} />}
-                        {t === 'laptimer' && <Hourglass size={14} />}
-                        {t === 'interval' && <Activity size={14} />}
-                        <span className="hidden sm:inline">{t === 'laptimer' ? 'Lap Timer' : t}</span>
-                    </button>
-                ))}
-            </div>
+        {/* Advanced Filter Console */}
+        <div className="bg-white/5 p-2 rounded-[2rem] border border-white/10 backdrop-blur-xl flex flex-col sm:flex-row gap-2">
+          {/* Mode Switcher */}
+          <div className="flex p-1 bg-black/20 rounded-2xl">
+            <button 
+              onClick={() => handlePresetChange('week')}
+              className={`px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-tighter transition-all ${rangeMode === 'week' ? modeStyles.week : 'text-slate-500 hover:text-white'}`}
+            >
+              Last 7 Days
+            </button>
+            <button 
+              onClick={() => handlePresetChange('month')}
+              className={`px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-tighter transition-all ${rangeMode === 'month' ? modeStyles.month : 'text-slate-500 hover:text-white'}`}
+            >
+              Last 30 Days
+            </button>
+            <button 
+              onClick={() => setRangeMode('custom')}
+              className={`px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-tighter transition-all ${rangeMode === 'custom' ? modeStyles.custom : 'text-slate-500 hover:text-white'}`}
+            >
+              Custom
+            </button>
+          </div>
 
-            <div className="flex bg-white/5 border border-white/10 rounded-xl p-1 backdrop-blur-sm">
-                <button 
-                    onClick={() => setViewMode('week')}
-                    className={`px-3 py-2 rounded-lg text-sm font-semibold transition-all ${viewMode === 'week' ? 'bg-slate-700 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'}`}
-                >
-                    Week
-                </button>
-                <button 
-                    onClick={() => setViewMode('month')}
-                    className={`px-3 py-2 rounded-lg text-sm font-semibold transition-all ${viewMode === 'month' ? 'bg-slate-700 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'}`}
-                >
-                    Month
-                </button>
+          <div className="flex items-center gap-2 px-2">
+            <div className="flex items-center gap-2 bg-slate-900/50 p-1 px-3 rounded-xl border border-white/5">
+              <Calendar size={14} className="text-slate-500" />
+              <input 
+                type="date" 
+                value={startDate}
+                onChange={(e) => handleDateChange('start', e.target.value)}
+                className="bg-transparent text-xs font-bold text-white outline-none w-28"
+              />
+              <span className="text-[10px] font-black text-slate-700">TO</span>
+              <input 
+                type="date" 
+                value={endDate}
+                onChange={(e) => handleDateChange('end', e.target.value)}
+                className="bg-transparent text-xs font-bold text-white outline-none w-28"
+              />
             </div>
+          </div>
         </div>
       </div>
 
-      {/* Insight Banner */}
-      <div className="bg-gradient-to-r from-blue-500/10 to-indigo-500/10 border border-blue-500/20 rounded-2xl p-6 mb-10 flex items-start gap-4">
-          <div className="p-3 bg-blue-500/20 text-blue-400 rounded-xl">
-              <Activity size={24} />
-          </div>
-          <div>
-              <h3 className="text-lg font-semibold text-white mb-1">Performance Insight</h3>
-              <p className="text-slate-300">{insight}</p>
-          </div>
+      {/* Tool Selector Dock */}
+      <div className="flex items-center gap-2 mb-10 overflow-x-auto pb-4 scrollbar-hide">
+          {(['stopwatch', 'countdown', 'laptimer', 'interval', 'chess'] as ToolType[]).map(t => (
+              <button
+                  key={t}
+                  onClick={() => setSelectedTool(t)}
+                  className={`px-6 py-3 rounded-2xl text-sm font-bold transition-all flex items-center gap-3 whitespace-nowrap border ${selectedTool === t ? 'bg-white text-slate-950 border-white' : 'bg-white/5 text-slate-400 border-white/5 hover:border-white/20'}`}
+              >
+                  {t === 'stopwatch' && <Watch size={18} />}
+                  {t === 'countdown' && <Timer size={18} />}
+                  {t === 'laptimer' && <Hourglass size={18} />}
+                  {t === 'interval' && <Activity size={18} />}
+                  {t === 'chess' && <Settings2 size={18} />}
+                  <span className="capitalize">{t === 'laptimer' ? 'Lap Timer' : t}</span>
+              </button>
+          ))}
       </div>
 
-      {/* Stats Cards */}
+      {/* Stats Summary Grid */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
-         <div className="bg-white/5 backdrop-blur-md p-6 rounded-2xl shadow-sm border border-white/10">
-             <div className="flex items-center gap-4 mb-2">
-                 <div className="p-3 rounded-xl bg-blue-500/20 text-blue-400">
-                     <Activity size={20} />
-                 </div>
-                 <p className="text-sm font-medium text-slate-400">{stats.metric1.label}</p>
+         {[stats.metric1, stats.metric2, stats.metric3].map((m, i) => (
+           <div key={i} className="group bg-white/5 hover:bg-white/[0.08] backdrop-blur-md p-8 rounded-[2.5rem] border border-white/10 hover:border-blue-500/30 transition-all">
+             <div className="flex items-center justify-between mb-4">
+                 <p className="text-xs font-black text-slate-500 uppercase tracking-widest">{m.label || 'Activity'}</p>
+                 <ChevronRight size={16} className="text-slate-700 group-hover:text-blue-500 transition-colors" />
              </div>
-             <p className="text-3xl font-bold text-white tabular-nums">{stats.metric1.value}</p>
-         </div>
-
-         <div className="bg-white/5 backdrop-blur-md p-6 rounded-2xl shadow-sm border border-white/10">
-             <div className="flex items-center gap-4 mb-2">
-                 <div className="p-3 rounded-xl bg-green-500/20 text-green-400">
-                     <TrendingUp size={20} />
-                 </div>
-                 <p className="text-sm font-medium text-slate-400">{stats.metric2.label}</p>
-             </div>
-             <p className="text-3xl font-bold text-white tabular-nums">{stats.metric2.value}</p>
-         </div>
-         
-         <div className="bg-white/5 backdrop-blur-md p-6 rounded-2xl shadow-sm border border-white/10">
-             <div className="flex items-center gap-4 mb-2">
-                 <div className="p-3 rounded-xl bg-purple-500/20 text-purple-400">
-                     <Clock size={20} />
-                 </div>
-                 <p className="text-sm font-medium text-slate-400">{stats.metric3.label}</p>
-             </div>
-             <p className="text-3xl font-bold text-white tabular-nums">{stats.metric3.value}</p>
-         </div>
+             <p className="text-4xl font-black text-white tabular-nums tracking-tighter">{m.value || '0'}</p>
+           </div>
+         ))}
       </div>
 
-      {/* Dynamic Charts Area */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-10">
-         {/* Main Chart 1 */}
-         <div className="bg-white/5 backdrop-blur-md p-6 sm:p-8 rounded-3xl shadow-sm border border-white/10">
-            <h2 className="text-lg font-bold text-slate-200 mb-6 flex items-center gap-2">
-                <Filter size={18} className="text-slate-500" />
-                {selectedTool === 'stopwatch' && 'Accumulated Duration (Hours)'}
-                {selectedTool === 'countdown' && 'Completion Rate (%)'}
-                {selectedTool === 'laptimer' && 'Performance: Avg Lap Time (s)'}
-                {selectedTool === 'interval' && 'Rounds Completed'}
-            </h2>
-            <div className="h-[300px] w-full">
+      {/* Visualization Canvas */}
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-8">
+         <div className="xl:col-span-8 bg-white/5 backdrop-blur-md p-8 rounded-[3rem] border border-white/10">
+            <div className="flex items-center justify-between mb-10">
+                <h2 className="text-sm font-black text-slate-400 uppercase tracking-[0.3em]">Temporal Activity</h2>
+                <div className="flex items-center gap-2">
+                    <div className={`w-2 h-2 rounded-full ${rangeMode === 'week' ? 'bg-blue-500' : rangeMode === 'month' ? 'bg-emerald-500' : 'bg-violet-500'}`}></div>
+                    <span className="text-[10px] font-bold text-slate-500">{rangeMode.toUpperCase()} VIEW</span>
+                </div>
+            </div>
+            <div className="h-[400px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
-                    {selectedTool === 'stopwatch' && (
+                    {selectedTool === 'stopwatch' || selectedTool === 'chess' ? (
                         <BarChart data={chartData}>
-                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#334155" />
-                            <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 12}} dy={10} />
-                            <YAxis axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 12}} />
-                            <Tooltip cursor={{fill: '#1e293b'}} contentStyle={{backgroundColor: '#1e293b', borderRadius: '12px', border: '1px solid #334155', color: '#fff'}} itemStyle={{color: '#fff'}} />
-                            <Bar dataKey="hours" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#ffffff05" />
+                            <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#475569', fontSize: 10, fontWeight: 800}} dy={10} />
+                            <YAxis axisLine={false} tickLine={false} tick={{fill: '#475569', fontSize: 10, fontWeight: 800}} />
+                            <Tooltip cursor={{fill: '#ffffff03'}} contentStyle={{backgroundColor: '#020617', borderRadius: '20px', border: '1px solid #ffffff10'}} itemStyle={{color: '#3b82f6', fontWeight: 900}} />
+                            <Bar dataKey="hours" fill={rangeMode === 'week' ? '#3b82f6' : rangeMode === 'month' ? '#10b981' : '#8b5cf6'} radius={[10, 10, 0, 0]} />
                         </BarChart>
-                    )}
-                    {selectedTool === 'countdown' && (
-                        <BarChart data={chartData}>
-                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#334155" />
-                            <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 12}} dy={10} />
-                            <YAxis axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 12}} />
-                            <Tooltip cursor={{fill: '#1e293b'}} contentStyle={{backgroundColor: '#1e293b', borderRadius: '12px', border: '1px solid #334155', color: '#fff'}} itemStyle={{color: '#fff'}} />
-                            <Bar dataKey="conversionRate" fill="#22c55e" radius={[4, 4, 0, 0]} />
-                        </BarChart>
-                    )}
-                    {selectedTool === 'laptimer' && (
-                        <LineChart data={chartData}>
-                             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#334155" />
-                            <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 12}} dy={10} />
-                            <YAxis axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 12}} />
-                            <Tooltip contentStyle={{backgroundColor: '#1e293b', borderRadius: '12px', border: '1px solid #334155', color: '#fff'}} itemStyle={{color: '#fff'}} />
-                            <Line type="monotone" dataKey="avgLapSeconds" stroke="#8b5cf6" strokeWidth={3} dot={{r:4, fill:'#8b5cf6'}} />
-                        </LineChart>
-                    )}
-                    {selectedTool === 'interval' && (
-                        <BarChart data={chartData}>
-                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#334155" />
-                            <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 12}} dy={10} />
-                            <YAxis axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 12}} />
-                            <Tooltip cursor={{fill: '#1e293b'}} contentStyle={{backgroundColor: '#1e293b', borderRadius: '12px', border: '1px solid #334155', color: '#fff'}} itemStyle={{color: '#fff'}} />
-                            <Bar dataKey="totalRounds" fill="#f97316" radius={[4, 4, 0, 0]} />
-                        </BarChart>
+                    ) : (
+                        <AreaChart data={chartData}>
+                            <defs>
+                                <linearGradient id="colorVal" x1="0" y1="0" x2="0" y2="1">
+                                    <stop offset="5%" stopColor={rangeMode === 'week' ? '#3b82f6' : '#10b981'} stopOpacity={0.3}/>
+                                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                                </linearGradient>
+                            </defs>
+                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#ffffff05" />
+                            <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#475569', fontSize: 10, fontWeight: 800}} dy={10} />
+                            <YAxis axisLine={false} tickLine={false} tick={{fill: '#475569', fontSize: 10, fontWeight: 800}} />
+                            <Tooltip contentStyle={{backgroundColor: '#020617', borderRadius: '20px', border: '1px solid #ffffff10'}} />
+                            <Area type="monotone" dataKey="sessions" stroke={rangeMode === 'week' ? '#3b82f6' : '#10b981'} strokeWidth={4} fillOpacity={1} fill="url(#colorVal)" />
+                        </AreaChart>
                     )}
                 </ResponsiveContainer>
             </div>
          </div>
 
-         {/* Main Chart 2 */}
-         <div className="bg-white/5 backdrop-blur-md p-6 sm:p-8 rounded-3xl shadow-sm border border-white/10">
-            <h2 className="text-lg font-bold text-slate-200 mb-6 flex items-center gap-2">
-                <TrendingUp size={18} className="text-slate-500" />
-                {selectedTool === 'stopwatch' && 'Frequency (Session Count)'}
-                {selectedTool === 'countdown' && 'Avg Interruptions'}
-                {selectedTool === 'laptimer' && 'Consistency (Lower is Better)'}
-                {selectedTool === 'interval' && 'Active Minutes'}
-            </h2>
-            <div className="h-[300px] w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                    {selectedTool === 'stopwatch' && (
-                        <LineChart data={chartData}>
-                             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#334155" />
-                            <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 12}} dy={10} />
-                            <YAxis axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 12}} />
-                            <Tooltip contentStyle={{backgroundColor: '#1e293b', borderRadius: '12px', border: '1px solid #334155', color: '#fff'}} itemStyle={{color: '#fff'}} />
-                            <Line type="monotone" dataKey="sessions" stroke="#3b82f6" strokeWidth={3} dot={{r:4, fill:'#3b82f6'}} />
-                        </LineChart>
-                    )}
-                    {selectedTool === 'countdown' && (
-                         <LineChart data={chartData}>
-                             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#334155" />
-                            <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 12}} dy={10} />
-                            <YAxis axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 12}} />
-                            <Tooltip contentStyle={{backgroundColor: '#1e293b', borderRadius: '12px', border: '1px solid #334155', color: '#fff'}} itemStyle={{color: '#fff'}} />
-                            <Line type="monotone" dataKey="avgPauses" stroke="#22c55e" strokeWidth={3} dot={{r:4, fill:'#22c55e'}} />
-                        </LineChart>
-                    )}
-                    {selectedTool === 'laptimer' && (
-                        <AreaChart data={chartData}>
-                             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#334155" />
-                            <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 12}} dy={10} />
-                            <YAxis axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 12}} />
-                            <Tooltip contentStyle={{backgroundColor: '#1e293b', borderRadius: '12px', border: '1px solid #334155', color: '#fff'}} itemStyle={{color: '#fff'}} />
-                            <Area type="monotone" dataKey="consistencyScore" stroke="#8b5cf6" fill="#8b5cf6" fillOpacity={0.1} />
-                        </AreaChart>
-                    )}
-                    {selectedTool === 'interval' && (
-                        <AreaChart data={chartData}>
-                             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#334155" />
-                            <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 12}} dy={10} />
-                            <YAxis axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 12}} />
-                            <Tooltip contentStyle={{backgroundColor: '#1e293b', borderRadius: '12px', border: '1px solid #334155', color: '#fff'}} itemStyle={{color: '#fff'}} />
-                            <Area type="monotone" dataKey="minutes" stroke="#f97316" fill="#f97316" fillOpacity={0.1} />
-                        </AreaChart>
-                    )}
-                </ResponsiveContainer>
+         <div className="xl:col-span-4 flex flex-col gap-6">
+            <div className="bg-gradient-to-br from-white/5 to-white/[0.02] p-8 rounded-[2.5rem] border border-white/10 flex-1">
+                <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-6">Engagement Insight</h3>
+                <p className="text-slate-300 leading-relaxed font-medium">
+                    {insight} 
+                    <br /><br />
+                    Consistency is key to reaching your goals. Try to log at least one session every day to maintain your streak.
+                </p>
+                <div className="mt-8 pt-8 border-t border-white/5 flex items-center justify-between">
+                    <div>
+                        <p className="text-[10px] font-black text-slate-600 uppercase mb-1">Total Sessions</p>
+                        <p className="text-2xl font-black text-white">{stats.totalSessions}</p>
+                    </div>
+                    <div className="w-12 h-12 rounded-full border-4 border-blue-500/20 border-t-blue-500 flex items-center justify-center">
+                        <TrendingUp size={16} className="text-blue-500" />
+                    </div>
+                </div>
             </div>
          </div>
       </div>
