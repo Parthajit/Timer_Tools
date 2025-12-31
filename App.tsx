@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Header from './components/Header';
@@ -10,8 +11,6 @@ import Countdown from './components/tools/Countdown';
 import IntervalTimer from './components/tools/IntervalTimer';
 import DigitalClock from './components/tools/DigitalClock';
 import AlarmClock from './components/tools/AlarmClock';
-import Metronome from './components/tools/Metronome';
-import ChessClock from './components/tools/ChessClock';
 import { AuthProvider } from './contexts/AuthContext';
 
 const App: React.FC = () => {
@@ -36,8 +35,6 @@ const App: React.FC = () => {
               <Route path="/clock" element={<DigitalClock />} />
               
               <Route path="/alarm" element={<AlarmClock />} />
-              <Route path="/metronome" element={<Metronome />} />
-              <Route path="/chess" element={<ChessClock />} />
               
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>

@@ -1,17 +1,13 @@
+
 import { 
   Timer, 
   Hourglass, 
   Activity, 
   Clock, 
   Bell, 
-  Music, 
-  Swords, 
   Watch
 } from 'lucide-react';
 import { ToolConfig } from './types';
-
-// Using 'Watch' for Stopwatch, 'Timer' for Countdown, etc.
-// Lucide icons: Watch, Timer, Activity, Clock, Bell, Music, Swords (for Chess)
 
 export const TOOLS: ToolConfig[] = [
   {
@@ -39,7 +35,7 @@ export const TOOLS: ToolConfig[] = [
     name: 'Lap Timer',
     description: 'Track splits and lap times',
     path: '/laptimer',
-    icon: Hourglass, // Using Hourglass as a proxy for split timer visuals or similar
+    icon: Hourglass,
     color: 'purple',
     bgColor: 'bg-purple-50',
     iconBg: 'bg-purple-600',
@@ -73,25 +69,5 @@ export const TOOLS: ToolConfig[] = [
     color: 'red',
     bgColor: 'bg-red-50',
     iconBg: 'bg-red-500',
-  },
-  {
-    id: 'metronome',
-    name: 'Metronome',
-    description: 'Keep the beat with adjustable BPM',
-    path: '/metronome',
-    icon: Music,
-    color: 'teal',
-    bgColor: 'bg-teal-50',
-    iconBg: 'bg-teal-600',
-  },
-  {
-    id: 'chess',
-    name: 'Chess Clock',
-    description: 'Two-player game timer',
-    path: '/chess',
-    icon: Swords,
-    color: 'amber',
-    bgColor: 'bg-amber-50',
-    iconBg: 'bg-amber-600',
   },
 ];
