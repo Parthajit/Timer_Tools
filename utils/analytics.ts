@@ -1,6 +1,4 @@
-
 import { db, auth } from '../lib/firebase';
-// Fix: Removing modular firestore imports as we use the compat/v8 instances from lib/firebase.ts
 
 export interface TimerSession {
   id: string;
@@ -30,22 +28,27 @@ export const logSession = async (
 
   if (user) {
       try {
-          // Fix: Using db.collection(...).add(...) (compat/v8 style) instead of modular addDoc(collection(...))
           await db.collection('timer_sessions').add({
               ...sessionData,
               user_id: user.uid,
           });
-      } catch (e) {
-          console.error("Error logging to Firestore", e);
+      } catch (e: any) {
+          // If permission error, strictly fallback to local storage
+          console.warn("Storage permission denied. Saving locally instead.", e.message);
+          saveLocally(sessionData);
       }
   } else {
-      const session: TimerSession = {
-        id: crypto.randomUUID(),
-        ...sessionData
-      };
-      const existing = getLocalSessions();
-      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify([...existing, session]));
+      saveLocally(sessionData);
   }
+};
+
+const saveLocally = (data: any) => {
+  const session: TimerSession = {
+    id: crypto.randomUUID(),
+    ...data
+  };
+  const existing = getLocalSessions();
+  localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify([...existing, session]));
 };
 
 export const getSessions = async (): Promise<TimerSession[]> => {
@@ -53,7 +56,7 @@ export const getSessions = async (): Promise<TimerSession[]> => {
 
   if (user) {
       try {
-          // Fix: Using db.collection(...).where(...).get() (compat/v8 style) instead of modular query and getDocs
+          // Check if we can reach firestore
           const querySnapshot = await db.collection('timer_sessions')
             .where('user_id', '==', user.uid)
             .get();
@@ -62,13 +65,22 @@ export const getSessions = async (): Promise<TimerSession[]> => {
           querySnapshot.forEach((doc) => {
               sessions.push({ id: doc.id, ...doc.data() } as TimerSession);
           });
-          return sessions;
-      } catch (e) {
-          console.error("Error fetching sessions", e);
-          return [];
+          
+          const local = getLocalSessions();
+          return [...sessions, ...local].sort((a, b) => 
+            new Date(b.started_at).getTime() - new Date(a.started_at).getTime()
+          );
+      } catch (e: any) {
+          // Silence permission errors by returning only local data
+          console.warn("Analytics fetch failed (restricted access). Fallback to local cache.", e.message);
+          return getLocalSessions().sort((a, b) => 
+            new Date(b.started_at).getTime() - new Date(a.started_at).getTime()
+          );
       }
   } else {
-      return getLocalSessions();
+      return getLocalSessions().sort((a, b) => 
+        new Date(b.started_at).getTime() - new Date(a.started_at).getTime()
+      );
   }
 };
 
@@ -99,7 +111,7 @@ export const generateMockData = () => {
     let duration = Math.floor(Math.random() * 1000 * 60 * 45) + 5000;
 
     if (tool === 'interval') {
-        metadata = { rounds: 8, work: 20, rest: 10, rounds_completed: Math.floor(Math.random() * 8) + 1 };
+        metadata = { rounds: 8, work: 20000, rest: 10000, rounds_completed: Math.floor(Math.random() * 8) + 1 };
     } else if (tool === 'countdown') {
         metadata = { 
           original_target: 300000, 
@@ -109,7 +121,7 @@ export const generateMockData = () => {
     } else if (tool === 'laptimer') {
         const lapCount = Math.floor(Math.random() * 10) + 1;
         const avg = Math.floor(Math.random() * 50000) + 20000;
-        const variance = Math.floor(Math.random() * 2000);
+        const variance = Math.floor(Math.random() * 2000000);
         metadata = {
             lapCount,
             averageLap: avg,

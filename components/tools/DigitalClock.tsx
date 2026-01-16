@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Globe, Clock as ClockIcon, Settings2 } from 'lucide-react';
 
@@ -57,27 +56,27 @@ const DigitalClock: React.FC = () => {
   return (
     <div className="flex flex-col items-center justify-center min-h-[70vh] px-4 py-12">
       <div className="text-center mb-16 relative">
-        <h1 className="text-[12vw] sm:text-9xl md:text-[12rem] font-black text-white tabular-nums leading-none tracking-tighter drop-shadow-[0_0_50px_rgba(59,130,246,0.3)] animate-in fade-in zoom-in duration-700">
+        <h1 className="text-[14vw] sm:text-9xl md:text-[14rem] font-black text-white tabular-nums leading-none tracking-tighter drop-shadow-[0_0_80px_rgba(59,130,246,0.3)] animate-in fade-in zoom-in duration-700">
           {formatTime(time)}
         </h1>
-        <p className="text-xl sm:text-3xl text-slate-400 mt-8 font-medium tracking-wide flex items-center justify-center gap-3">
-          <Globe size={24} className="text-blue-500" />
+        <p className="text-xl sm:text-3xl text-slate-400 mt-8 font-medium tracking-wide flex items-center justify-center gap-4">
+          <div className="p-1 bg-blue-500/20 rounded-lg"><Globe size={28} className="text-blue-500" /></div>
           {formatDate(time)}
         </p>
       </div>
 
-      <div className="bg-white/5 border border-white/10 rounded-[2.5rem] p-6 backdrop-blur-xl flex flex-col sm:flex-row items-center gap-8 shadow-2xl">
+      <div className="bg-white/5 border border-white/10 rounded-[3rem] p-8 backdrop-blur-2xl flex flex-col sm:flex-row items-center gap-10 shadow-2xl">
         {/* Timezone Selector */}
-        <div className="flex items-center gap-4">
-          <div className="p-3 bg-blue-600/20 text-blue-400 rounded-2xl">
-            <Globe size={20} />
+        <div className="flex items-center gap-5">
+          <div className="p-4 bg-blue-600/20 text-blue-400 rounded-2xl shadow-inner">
+            <Globe size={24} />
           </div>
           <div className="flex flex-col">
-            <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Timezone</span>
+            <span className="text-[10px] font-black text-slate-500 uppercase tracking-[0.3em] mb-1.5">Selected Region</span>
             <select 
               value={selectedTz}
               onChange={(e) => setSelectedTz(e.target.value)}
-              className="bg-transparent text-white font-bold text-sm outline-none cursor-pointer hover:text-blue-400 transition-colors border-none p-0 appearance-none"
+              className="bg-transparent text-white font-black text-lg outline-none cursor-pointer hover:text-blue-400 transition-colors border-none p-0 appearance-none focus:ring-0"
             >
               {COMMON_TIMEZONES.map(tz => (
                 <option key={tz.value} value={tz.value} className="bg-slate-900 text-white">
@@ -88,25 +87,25 @@ const DigitalClock: React.FC = () => {
           </div>
         </div>
 
-        <div className="w-px h-10 bg-white/10 hidden sm:block"></div>
+        <div className="w-px h-12 bg-white/10 hidden sm:block"></div>
 
         {/* Format Toggle */}
-        <div className="flex items-center gap-4">
-          <div className="p-3 bg-indigo-600/20 text-indigo-400 rounded-2xl">
-            <Settings2 size={20} />
+        <div className="flex items-center gap-5">
+          <div className="p-4 bg-indigo-600/20 text-indigo-400 rounded-2xl shadow-inner">
+            <Settings2 size={24} />
           </div>
           <div className="flex flex-col">
-            <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Format</span>
-            <div className="flex bg-black/20 p-1 rounded-xl">
+            <span className="text-[10px] font-black text-slate-500 uppercase tracking-[0.3em] mb-1.5">Clock Format</span>
+            <div className="flex bg-black/40 p-1.5 rounded-2xl border border-white/5">
               <button 
                 onClick={() => setIs24Hour(false)}
-                className={`px-4 py-1.5 rounded-lg text-xs font-black transition-all ${!is24Hour ? 'bg-white text-slate-950' : 'text-slate-500 hover:text-slate-300'}`}
+                className={`px-6 py-2 rounded-xl text-xs font-black transition-all ${!is24Hour ? 'bg-white text-slate-950 shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}
               >
                 12H
               </button>
               <button 
                 onClick={() => setIs24Hour(true)}
-                className={`px-4 py-1.5 rounded-lg text-xs font-black transition-all ${is24Hour ? 'bg-white text-slate-950' : 'text-slate-500 hover:text-slate-300'}`}
+                className={`px-6 py-2 rounded-xl text-xs font-black transition-all ${is24Hour ? 'bg-white text-slate-950 shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}
               >
                 24H
               </button>
@@ -116,9 +115,9 @@ const DigitalClock: React.FC = () => {
       </div>
       
       {/* Detail hint */}
-      <div className="mt-8 flex items-center gap-2 text-slate-500">
-        <ClockIcon size={14} />
-        <span className="text-xs font-bold uppercase tracking-widest">{selectedTz.split('/').pop()?.replace('_', ' ')} Standard Time</span>
+      <div className="mt-12 flex items-center gap-3 px-4 py-2 bg-white/5 rounded-full border border-white/5">
+        <ClockIcon size={14} className="text-blue-500" />
+        <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">{selectedTz.replace('_', ' ')} (GMT{time.getTimezoneOffset() > 0 ? '-' : '+'}{Math.abs(time.getTimezoneOffset()/60)})</span>
       </div>
     </div>
   );

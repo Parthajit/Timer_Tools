@@ -22,21 +22,30 @@ const Stopwatch: React.FC<StopwatchProps> = ({ mode = 'stopwatch' }) => {
     lapsRef.current = laps;
   }, [laps]);
 
-  const calculateAnalytics = (currentLaps: number[]) => {
-      if (currentLaps.length === 0) return {};
+  const calculateAnalytics = (splitTimes: number[]) => {
+      if (splitTimes.length === 0) return {};
       
-      const sum = currentLaps.reduce((a, b) => a + b, 0);
-      const avg = sum / currentLaps.length;
-      // Calculate Standard Deviation for Consistency
-      const variance = currentLaps.reduce((a, b) => a + Math.pow(b - avg, 2), 0) / currentLaps.length;
+      // splitTimes are total elapsed times [lap3_end, lap2_end, lap1_end]
+      // We need to convert these to individual lap durations
+      const reversedSplits = [...splitTimes].reverse(); // [lap1_end, lap2_end, lap3_end]
+      const lapDurations: number[] = reversedSplits.map((split, i) => {
+          if (i === 0) return split;
+          return split - reversedSplits[i - 1];
+      });
+      
+      const sum = lapDurations.reduce((a, b) => a + b, 0);
+      const avg = sum / lapDurations.length;
+      
+      // Calculate Standard Deviation of the individual lap durations
+      const variance = lapDurations.reduce((a, b) => a + Math.pow(b - avg, 2), 0) / lapDurations.length;
       const consistency = Math.sqrt(variance);
 
       return {
-          lapCount: currentLaps.length,
+          lapCount: lapDurations.length,
           averageLap: avg,
           consistency: consistency,
-          fastestLap: Math.min(...currentLaps),
-          slowestLap: Math.max(...currentLaps)
+          fastestLap: Math.min(...lapDurations),
+          slowestLap: Math.max(...lapDurations)
       };
   };
 
@@ -92,7 +101,7 @@ const Stopwatch: React.FC<StopwatchProps> = ({ mode = 'stopwatch' }) => {
   const formatTime = (ms: number) => {
     const minutes = Math.floor(ms / 60000);
     const seconds = Math.floor((ms % 60000) / 1000);
-    const milliseconds = Math.floor((ms % 1000) / 10); // First 2 digits of ms
+    const milliseconds = Math.floor((ms % 1000) / 10);
 
     return (
       <div className="flex items-baseline justify-center tabular-nums text-white">
@@ -117,19 +126,12 @@ const Stopwatch: React.FC<StopwatchProps> = ({ mode = 'stopwatch' }) => {
 
         <div className="flex gap-4 justify-center">
           {!isRunning ? (
-            <div className="relative group">
-              <button 
-                onClick={handleStart}
-                className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-8 py-4 rounded-xl font-semibold text-lg transition-all active:scale-95 shadow-lg shadow-blue-900/30"
-              >
-                <Play fill="currentColor" size={20} /> Start
-              </button>
-              {/* Tooltip */}
-              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-3 px-3 py-1.5 bg-slate-800 text-white text-xs font-medium rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 whitespace-nowrap pointer-events-none border border-white/10 shadow-xl z-20">
-                Start the timer
-                <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-slate-800"></div>
-              </div>
-            </div>
+            <button 
+              onClick={handleStart}
+              className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-8 py-4 rounded-xl font-semibold text-lg transition-all active:scale-95 shadow-lg shadow-blue-900/30"
+            >
+              <Play fill="currentColor" size={20} /> Start
+            </button>
           ) : (
             <button 
               onClick={handleStop}
@@ -159,7 +161,6 @@ const Stopwatch: React.FC<StopwatchProps> = ({ mode = 'stopwatch' }) => {
         </div>
       </div>
 
-      {/* Laps Section */}
       {laps.length > 0 && (
         <div className="mt-8 w-full max-w-md">
            <div className="bg-white/5 backdrop-blur-md rounded-2xl shadow-lg border border-white/10 overflow-hidden">
@@ -167,7 +168,7 @@ const Stopwatch: React.FC<StopwatchProps> = ({ mode = 'stopwatch' }) => {
                 <span>Lap</span>
                 <span>Split Time</span>
              </div>
-             <div className="max-h-64 overflow-y-auto">
+             <div className="max-h-64 overflow-y-auto custom-scrollbar">
                 {laps.map((lapTime, index) => {
                   const lapNum = laps.length - index;
                   const ms = Math.floor((lapTime % 1000) / 10);

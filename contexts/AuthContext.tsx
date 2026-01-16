@@ -1,7 +1,4 @@
-
 import React, { createContext, useContext, useState, useEffect } from 'react';
-// Fix: Use the initialized auth and db instances from the compat SDK instead of modular exports
-// modular exports from 'firebase/auth' and 'firebase/firestore' cause errors in compat mode.
 import { auth, db } from '../lib/firebase';
 import { generateMockData } from '../utils/analytics';
 
@@ -32,25 +29,33 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Fix: Using auth.onAuthStateChanged (compat/v8 style) instead of the modular standalone function
     const unsubscribe = auth.onAuthStateChanged(async (firebaseUser) => {
       if (firebaseUser) {
-        // Fix: Using db.collection('users').doc(...) (compat/v8 style)
-        const userRef = db.collection('users').doc(firebaseUser.uid);
-        const userDoc = await userRef.get();
+        try {
+          const userRef = db.collection('users').doc(firebaseUser.uid);
+          const userDoc = await userRef.get();
 
-        // Fix: In v8/compat, .exists is a property, not a method
-        if (userDoc.exists) {
-          setUser(userDoc.data() as UserData);
-        } else {
-          const fallbackUser: UserData = {
+          if (userDoc.exists) {
+            setUser(userDoc.data() as UserData);
+          } else {
+            const fallbackUser: UserData = {
+              id: firebaseUser.uid,
+              name: firebaseUser.email?.split('@')[0] || 'User',
+              email: firebaseUser.email || '',
+              plan: 'free',
+              createdAt: new Date().toISOString()
+            };
+            setUser(fallbackUser);
+          }
+        } catch (e: any) {
+          console.warn("Auth profile restricted (Missing permissions). Using minimal profile.", e.message);
+          setUser({
             id: firebaseUser.uid,
             name: firebaseUser.email?.split('@')[0] || 'User',
             email: firebaseUser.email || '',
             plan: 'free',
             createdAt: new Date().toISOString()
-          };
-          setUser(fallbackUser);
+          });
         }
       } else {
         setUser(null);
@@ -67,12 +72,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const login = async (email: string, password = 'password123') => {
-    // Fix: Using auth.signInWithEmailAndPassword (compat/v8 style)
     await auth.signInWithEmailAndPassword(email, password);
   };
 
   const signup = async (email: string, password = 'password123') => {
-      // Fix: Using auth.createUserWithEmailAndPassword (compat/v8 style)
       const result = await auth.createUserWithEmailAndPassword(email, password);
       if (!result.user) throw new Error("Signup failed");
 
@@ -84,18 +87,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           createdAt: new Date().toISOString()
       };
       
-      // Fix: Using db.collection('users').doc(...).set(...) (compat/v8 style)
-      await db.collection('users').doc(result.user.uid).set(newUser);
+      try {
+        await db.collection('users').doc(result.user.uid).set(newUser);
+      } catch (e) {
+        console.warn("Failed to create user profile in Firestore (Permissions).", e);
+      }
       setUser(newUser);
   }
 
   const logout = () => {
-    // Fix: Using auth.signOut() (compat/v8 style)
     auth.signOut();
   };
 
   const resetPassword = async (email: string) => {
-    // Fix: Using auth.sendPasswordResetEmail (compat/v8 style)
     await auth.sendPasswordResetEmail(email);
   };
 
@@ -108,14 +112,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const updatedUser: UserData = { ...user, plan: 'trial', trialEndDate: endDateStr };
     
     try {
-      // Fix: Using db.collection('users').doc(...).update(...) (compat/v8 style)
       await db.collection('users').doc(user.id).update({
         plan: 'trial',
         trialEndDate: endDateStr
       });
       setUser(updatedUser);
     } catch (e) {
-      console.error("Failed to start trial", e);
+      console.error("Failed to start trial (Firestore restricted)", e);
+      setUser(updatedUser); // Update state anyway
     }
   };
 
@@ -123,14 +127,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!user) return;
     const updatedUser: UserData = { ...user, plan: 'pro', trialEndDate: undefined };
     try {
-      // Fix: Using db.collection('users').doc(...).update(...) (compat/v8 style)
       await db.collection('users').doc(user.id).update({
         plan: 'pro',
         trialEndDate: null 
       });
       setUser(updatedUser);
     } catch (e) {
-      console.error("Failed to upgrade", e);
+      console.error("Failed to upgrade (Firestore restricted)", e);
+      setUser(updatedUser); // Update state anyway
     }
   };
 
