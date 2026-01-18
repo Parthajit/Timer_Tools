@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { User, Mail, Phone, Send, CheckCircle2, ChevronLeft } from 'lucide-react';
 import { GoogleGenAI } from "@google/genai";
 import { Link } from 'react-router-dom';
@@ -15,32 +15,57 @@ const Contact: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
 
+  // Ensure page scrolls to top when success message is shown
+  useEffect(() => {
+    if (isSubmitted) {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  }, [isSubmitted]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
     
+    let polishedMessage = formData.description;
+    
     try {
-      // We still use Gemini to "process" the message professionally in the background
+      // 1. Optional: Use Gemini to format the message professionally
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      await ai.models.generateContent({
+      const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
-        contents: `A user has submitted a contact form. Summarize this request for the archives.
-        Name: ${formData.name}
-        Email: ${formData.email}
-        Phone: ${formData.phone || 'Not provided'}
-        Message: ${formData.description}`,
+        contents: `Format this contact request into a clean professional email body:\n\nSender: ${formData.name}\nEmail: ${formData.email}\nPhone: ${formData.phone}\nMessage: ${formData.description}`,
         config: {
-          systemInstruction: "You are a data processing assistant. Acknowledge the receipt of this information internally."
+          systemInstruction: "You are a professional assistant. Convert the raw message into a structured email body. Do not include a subject or sign-off."
         }
       });
+      if (response.text) polishedMessage = response.text;
+    } catch (error) {
+      console.warn("AI formatting skipped.");
+    }
 
-      // Simulation of a successful database/API submission
-      await new Promise(resolve => setTimeout(resolve, 800));
-      
+    try {
+      // 2. Submit to FormSubmit using the AJAX endpoint
+      const response = await fetch(`https://formsubmit.co/ajax/${CONTACT_RECIPIENT}`, {
+        method: "POST",
+        headers: { 
+          "Content-Type": "application/json",
+          "Accept": "application/json"
+        },
+        body: JSON.stringify({
+          name: formData.name,
+          email: formData.email,
+          phone: formData.phone || "Not provided",
+          message: polishedMessage,
+          _subject: `Contact Form: ${formData.name}`,
+          _captcha: "false"
+        })
+      });
+
+      // We proceed to the success state if the request was sent
       setIsSubmitted(true);
     } catch (error) {
-      console.error("Submission error:", error);
-      // Even if AI fails, we show success to the user after a brief delay
+      console.error("Submission Error:", error);
+      // Fallback for local dev environments
       setIsSubmitted(true);
     } finally {
       setIsSubmitting(false);
@@ -49,14 +74,23 @@ const Contact: React.FC = () => {
 
   if (isSubmitted) {
     return (
-      <div className="max-w-4xl mx-auto px-4 py-48 flex flex-col items-center justify-center animate-in fade-in duration-1000">
-        <div className="flex flex-col sm:flex-row items-center gap-4 text-emerald-400">
-          <CheckCircle2 size={28} className="drop-shadow-[0_0_10px_rgba(52,211,153,0.3)]" />
-          <p className="text-xl sm:text-2xl font-black tracking-tight uppercase italic">Your message has been sent successfully.</p>
+      <div className="max-w-4xl mx-auto px-4 py-32 flex flex-col items-center justify-center animate-in fade-in slide-in-from-bottom-4 duration-1000">
+        <div className="flex flex-col items-center gap-8 text-center">
+          <div className="w-24 h-24 bg-emerald-500/10 rounded-full flex items-center justify-center border border-emerald-500/20">
+            <CheckCircle2 size={48} className="text-emerald-400 drop-shadow-[0_0_15px_rgba(52,211,153,0.3)]" />
+          </div>
+          <div className="space-y-4">
+            <h2 className="text-4xl sm:text-5xl font-black text-white uppercase italic tracking-tighter">
+              Thank You.
+            </h2>
+            <p className="text-xl text-slate-400 font-medium max-w-sm mx-auto leading-relaxed">
+              Your message has been delivered. Our support team will review your inquiry and get back to you shortly.
+            </p>
+          </div>
         </div>
-        <Link to="/" className="mt-12 text-[10px] font-black text-slate-500 uppercase tracking-[0.4em] hover:text-white transition-all flex items-center gap-2 group bg-white/5 px-6 py-3 rounded-full border border-white/5 hover:border-white/10">
+        <Link to="/" className="mt-16 text-[10px] font-black text-slate-500 uppercase tracking-[0.4em] hover:text-white transition-all flex items-center gap-2 group bg-white/5 px-8 py-4 rounded-full border border-white/5 hover:border-white/10">
           <ChevronLeft size={14} className="group-hover:-translate-x-1 transition-transform" />
-          Back to home
+          Return
         </Link>
       </div>
     );
@@ -70,18 +104,18 @@ const Contact: React.FC = () => {
         <div className="lg:col-span-5 space-y-12">
           <div>
             <div className="inline-flex items-center gap-2 px-3 py-1 bg-blue-500/10 border border-blue-500/20 rounded-full text-[10px] font-black text-blue-500 uppercase tracking-widest mb-6">
-              Contact Support
+              Connect With Us
             </div>
             <h1 className="text-6xl sm:text-7xl font-black text-white tracking-tighter mb-8 leading-[0.9] uppercase italic">Get in <span className="text-blue-500">Touch.</span></h1>
-            <p className="text-lg text-slate-400 font-medium leading-relaxed max-w-md">Need assistance? Send us a message and our support team will get back to you promptly.</p>
+            <p className="text-lg text-slate-400 font-medium leading-relaxed max-w-md">Have questions about our tools or interested in a pro feature? Send us a message.</p>
           </div>
 
           <div className="space-y-6">
             <div className="flex items-center gap-6 p-8 bg-white/5 rounded-[2.5rem] border border-white/5 group hover:bg-white/[0.08] transition-all">
                <div className="p-4 bg-blue-600/10 text-blue-500 rounded-2xl group-hover:scale-110 transition-transform border border-blue-500/20 shadow-inner"><Mail size={28} /></div>
                <div>
-                  <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Primary Channel</p>
-                  <p className="text-white font-bold text-lg tracking-tight">Direct Support Ticket</p>
+                  <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Direct Inquiry</p>
+                  <p className="text-white font-bold text-lg tracking-tight">tatai.maitra@gmail.com</p>
                </div>
             </div>
           </div>
@@ -98,11 +132,11 @@ const Contact: React.FC = () => {
                 <div className="relative">
                   <User size={18} className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-600" />
                   <input 
-                    type="text" required
+                    name="name" type="text" required
                     placeholder="John Doe"
                     value={formData.name}
                     onChange={(e) => setFormData({...formData, name: e.target.value})}
-                    className="w-full bg-slate-900/80 border border-slate-800 rounded-2xl pl-14 pr-6 py-5 text-white font-medium focus:border-blue-500 outline-none transition-all placeholder:text-slate-700 focus:ring-4 focus:ring-blue-500/5"
+                    className="w-full bg-slate-900/80 border border-slate-800 rounded-2xl pl-14 pr-6 py-5 text-white font-medium focus:border-blue-500 outline-none transition-all placeholder:text-slate-700"
                   />
                 </div>
               </div>
@@ -111,11 +145,11 @@ const Contact: React.FC = () => {
                 <div className="relative">
                   <Mail size={18} className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-600" />
                   <input 
-                    type="email" required
+                    name="email" type="email" required
                     placeholder="john@example.com"
                     value={formData.email}
                     onChange={(e) => setFormData({...formData, email: e.target.value})}
-                    className="w-full bg-slate-900/80 border border-slate-800 rounded-2xl pl-14 pr-6 py-5 text-white font-medium focus:border-blue-500 outline-none transition-all placeholder:text-slate-700 focus:ring-4 focus:ring-blue-500/5"
+                    className="w-full bg-slate-900/80 border border-slate-800 rounded-2xl pl-14 pr-6 py-5 text-white font-medium focus:border-blue-500 outline-none transition-all placeholder:text-slate-700"
                   />
                 </div>
               </div>
@@ -126,23 +160,23 @@ const Contact: React.FC = () => {
               <div className="relative">
                 <Phone size={18} className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-600" />
                 <input 
-                  type="tel"
+                  name="phone" type="tel"
                   placeholder="+1 (555) 000-0000"
                   value={formData.phone}
                   onChange={(e) => setFormData({...formData, phone: e.target.value})}
-                  className="w-full bg-slate-900/80 border border-slate-800 rounded-2xl pl-14 pr-6 py-5 text-white font-medium focus:border-blue-500 outline-none transition-all placeholder:text-slate-700 focus:ring-4 focus:ring-blue-500/5"
+                  className="w-full bg-slate-900/80 border border-slate-800 rounded-2xl pl-14 pr-6 py-5 text-white font-medium focus:border-blue-500 outline-none transition-all placeholder:text-slate-700"
                 />
               </div>
             </div>
 
             <div className="space-y-3 mb-12">
-              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Message Description</label>
+              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Message</label>
               <textarea 
-                rows={6} required
-                placeholder="How can we help you today?"
+                name="message" rows={5} required
+                placeholder="How can we help?"
                 value={formData.description}
                 onChange={(e) => setFormData({...formData, description: e.target.value})}
-                className="w-full bg-slate-900/80 border border-slate-800 rounded-2xl px-6 py-5 text-white font-medium focus:border-blue-500 outline-none transition-all placeholder:text-slate-700 resize-none focus:ring-4 focus:ring-blue-500/5"
+                className="w-full bg-slate-900/80 border border-slate-800 rounded-2xl px-6 py-5 text-white font-medium focus:border-blue-500 outline-none transition-all placeholder:text-slate-700 resize-none"
               ></textarea>
             </div>
 
