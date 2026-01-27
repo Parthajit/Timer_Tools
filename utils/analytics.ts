@@ -1,5 +1,5 @@
-
-import { db, auth } from '../lib/firebase';
+import { collection, addDoc, query, where, getDocs } from 'firebase/firestore';
+import { auth, db } from '../lib/firebase';
 
 export interface TimerSession {
   id: string;
@@ -12,7 +12,6 @@ export interface TimerSession {
 
 const LOCAL_STORAGE_KEY = 'timetools_sessions';
 
-// Helper to retrieve local sessions from storage
 const getLocalSessions = (): TimerSession[] => {
     try {
         const data = localStorage.getItem(LOCAL_STORAGE_KEY);
@@ -22,7 +21,6 @@ const getLocalSessions = (): TimerSession[] => {
     }
 }
 
-// Save locally if offline or not logged in
 const saveLocally = (data: Omit<TimerSession, 'id'>) => {
   try {
     const sessions = getLocalSessions();
@@ -53,8 +51,8 @@ export const logSession = async (
 
   if (user) {
       try {
-          // Fix: Use compat style for collection and add
-          await db.collection('timer_sessions').add({
+          const sessionsCol = collection(db, 'timer_sessions');
+          await addDoc(sessionsCol, {
               ...sessionData,
               user_id: user.uid,
           });
@@ -72,10 +70,9 @@ export const getSessions = async (): Promise<TimerSession[]> => {
 
   if (user) {
       try {
-          // Fix: Use compat style for query
-          const querySnapshot = await db.collection('timer_sessions')
-            .where('user_id', '==', user.uid)
-            .get();
+          const sessionsCol = collection(db, 'timer_sessions');
+          const q = query(sessionsCol, where('user_id', '==', user.uid));
+          const querySnapshot = await getDocs(q);
           
           const sessions: TimerSession[] = [];
           querySnapshot.forEach((doc) => {
