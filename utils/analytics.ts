@@ -1,3 +1,4 @@
+
 import { db, auth } from '../lib/firebase';
 
 export interface TimerSession {
@@ -10,6 +11,30 @@ export interface TimerSession {
 }
 
 const LOCAL_STORAGE_KEY = 'timetools_sessions';
+
+// Helper to retrieve local sessions from storage
+const getLocalSessions = (): TimerSession[] => {
+    try {
+        const data = localStorage.getItem(LOCAL_STORAGE_KEY);
+        return data ? JSON.parse(data) : [];
+    } catch (e) {
+        return [];
+    }
+}
+
+// Save locally if offline or not logged in
+const saveLocally = (data: Omit<TimerSession, 'id'>) => {
+  try {
+    const sessions = getLocalSessions();
+    sessions.push({
+      ...data,
+      id: crypto.randomUUID()
+    });
+    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(sessions));
+  } catch (e) {
+    console.error("Failed to save session locally", e);
+  }
+};
 
 export const logSession = async (
   tool: string, 
@@ -28,13 +53,13 @@ export const logSession = async (
 
   if (user) {
       try {
+          // Fix: Use compat style for collection and add
           await db.collection('timer_sessions').add({
               ...sessionData,
               user_id: user.uid,
           });
       } catch (e: any) {
-          // If permission error, strictly fallback to local storage
-          console.warn("Storage permission denied. Saving locally instead.", e.message);
+          console.warn("Storage permission denied or network error. Saving locally.", e.message);
           saveLocally(sessionData);
       }
   } else {
@@ -42,21 +67,12 @@ export const logSession = async (
   }
 };
 
-const saveLocally = (data: any) => {
-  const session: TimerSession = {
-    id: crypto.randomUUID(),
-    ...data
-  };
-  const existing = getLocalSessions();
-  localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify([...existing, session]));
-};
-
 export const getSessions = async (): Promise<TimerSession[]> => {
   const user = auth.currentUser;
 
   if (user) {
       try {
-          // Check if we can reach firestore
+          // Fix: Use compat style for query
           const querySnapshot = await db.collection('timer_sessions')
             .where('user_id', '==', user.uid)
             .get();
@@ -71,8 +87,7 @@ export const getSessions = async (): Promise<TimerSession[]> => {
             new Date(b.started_at).getTime() - new Date(a.started_at).getTime()
           );
       } catch (e: any) {
-          // Silence permission errors by returning only local data
-          console.warn("Analytics fetch failed (restricted access). Fallback to local cache.", e.message);
+          console.warn("Analytics fetch failed. Fallback to local cache.", e.message);
           return getLocalSessions().sort((a, b) => 
             new Date(b.started_at).getTime() - new Date(a.started_at).getTime()
           );
@@ -83,15 +98,6 @@ export const getSessions = async (): Promise<TimerSession[]> => {
       );
   }
 };
-
-const getLocalSessions = (): TimerSession[] => {
-    try {
-        const data = localStorage.getItem(LOCAL_STORAGE_KEY);
-        return data ? JSON.parse(data) : [];
-    } catch (e) {
-        return [];
-    }
-}
 
 export const generateMockData = () => {
   const existing = getLocalSessions();

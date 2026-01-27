@@ -1,4 +1,7 @@
+
 import React, { createContext, useContext, useState, useEffect } from 'react';
+// Fix: Use firebase/compat/app for type definitions if needed, or rely on the exported auth/db
+import firebase from 'firebase/compat/app';
 import { auth, db } from '../lib/firebase';
 import { generateMockData } from '../utils/analytics';
 
@@ -29,11 +32,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Fix: Use compat method call for onAuthStateChanged
     const unsubscribe = auth.onAuthStateChanged(async (firebaseUser) => {
       if (firebaseUser) {
         try {
-          const userRef = db.collection('users').doc(firebaseUser.uid);
-          const userDoc = await userRef.get();
+          const userDoc = await db.collection('users').doc(firebaseUser.uid).get();
 
           if (userDoc.exists) {
             setUser(userDoc.data() as UserData);
@@ -48,7 +51,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setUser(fallbackUser);
           }
         } catch (e: any) {
-          console.warn("Auth profile restricted (Missing permissions). Using minimal profile.", e.message);
+          console.warn("Auth profile fetch restricted. Using minimal local profile.", e.message);
           setUser({
             id: firebaseUser.uid,
             name: firebaseUser.email?.split('@')[0] || 'User',
@@ -71,6 +74,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return unsubscribe;
   }, []);
 
+  // Fix: Use compat methods for login, signup, logout, and resetPassword
   const login = async (email: string, password = 'password123') => {
     await auth.signInWithEmailAndPassword(email, password);
   };
@@ -90,14 +94,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       try {
         await db.collection('users').doc(result.user.uid).set(newUser);
       } catch (e) {
-        console.warn("Failed to create user profile in Firestore (Permissions).", e);
+        console.warn("Failed to create Firestore profile. Auth succeeded, but DB restricted.", e);
       }
       setUser(newUser);
   }
 
-  const logout = () => {
-    auth.signOut();
-  };
+  const logout = () => auth.signOut();
 
   const resetPassword = async (email: string) => {
     await auth.sendPasswordResetEmail(email);
@@ -118,8 +120,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
       setUser(updatedUser);
     } catch (e) {
-      console.error("Failed to start trial (Firestore restricted)", e);
-      setUser(updatedUser); // Update state anyway
+      console.error("Failed to start trial in DB", e);
+      setUser(updatedUser); 
     }
   };
 
@@ -133,8 +135,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
       setUser(updatedUser);
     } catch (e) {
-      console.error("Failed to upgrade (Firestore restricted)", e);
-      setUser(updatedUser); // Update state anyway
+      console.error("Failed to upgrade in DB", e);
+      setUser(updatedUser);
     }
   };
 

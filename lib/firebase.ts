@@ -1,5 +1,5 @@
 
-// Fix: Use compat imports to resolve "no exported member" errors in environments where only the v8-style default export is available.
+// Fix: Use compatibility layer for Firebase v9+ to ensure compatibility with environments expecting v8-style exports
 import firebase from 'firebase/compat/app';
 import 'firebase/compat/auth';
 import 'firebase/compat/firestore';
@@ -13,9 +13,10 @@ const firebaseConfig = {
   appId: "1:367948583182:web:197d7fa549ee50b10c875f"
 };
 
-// Fix: Use standardized initialization for Firebase v8/v9-compat SDK to avoid named export issues.
-const app = firebase.apps.length > 0 ? firebase.app() : firebase.initializeApp(firebaseConfig);
+// Initialize Firebase
+const app = firebase.initializeApp(firebaseConfig);
 
+// Initialize and export services using compatibility layer
 export const auth = firebase.auth();
 export const db = firebase.firestore();
 
