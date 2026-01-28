@@ -45,7 +45,7 @@ const Contact: React.FC = () => {
 
     try {
       // 2. Submit to FormSubmit using the AJAX endpoint
-      const response = await fetch(`https://formsubmit.co/ajax/${CONTACT_RECIPIENT}`, {
+      await fetch(`https://formsubmit.co/ajax/${CONTACT_RECIPIENT}`, {
         method: "POST",
         headers: { 
           "Content-Type": "application/json",
