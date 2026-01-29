@@ -1,12 +1,7 @@
+
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { 
-  onAuthStateChanged, 
-  signInWithEmailAndPassword, 
-  createUserWithEmailAndPassword, 
-  signOut, 
-  sendPasswordResetEmail 
-} from 'firebase/auth';
-import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
+// Fix: Use firebase/compat/app for type definitions if needed, or rely on the exported auth/db
+import firebase from 'firebase/compat/app';
 import { auth, db } from '../lib/firebase';
 import { generateMockData } from '../utils/analytics';
 
@@ -24,7 +19,7 @@ interface AuthContextType {
   loading: boolean;
   login: (email: string, password?: string) => Promise<void>;
   signup: (email: string, password?: string) => Promise<void>;
-  logout: () => Promise<void>;
+  logout: () => void;
   resetPassword: (email: string) => Promise<void>;
   startTrial: () => Promise<void>;
   upgradeSubscription: () => Promise<void>;
@@ -37,13 +32,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+    // Fix: Use compat method call for onAuthStateChanged
+    const unsubscribe = auth.onAuthStateChanged(async (firebaseUser) => {
       if (firebaseUser) {
         try {
-          const userDocRef = doc(db, 'users', firebaseUser.uid);
-          const userDoc = await getDoc(userDocRef);
+          const userDoc = await db.collection('users').doc(firebaseUser.uid).get();
 
-          if (userDoc.exists()) {
+          if (userDoc.exists) {
             setUser(userDoc.data() as UserData);
           } else {
             const fallbackUser: UserData = {
@@ -76,15 +71,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setLoading(false);
     });
 
-    return () => unsubscribe();
+    return unsubscribe;
   }, []);
 
+  // Fix: Use compat methods for login, signup, logout, and resetPassword
   const login = async (email: string, password = 'password123') => {
-    await signInWithEmailAndPassword(auth, email, password);
+    await auth.signInWithEmailAndPassword(email, password);
   };
 
   const signup = async (email: string, password = 'password123') => {
-      const result = await createUserWithEmailAndPassword(auth, email, password);
+      const result = await auth.createUserWithEmailAndPassword(email, password);
       if (!result.user) throw new Error("Signup failed");
 
       const newUser: UserData = {
@@ -96,17 +92,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       };
       
       try {
-        await setDoc(doc(db, 'users', result.user.uid), newUser);
+        await db.collection('users').doc(result.user.uid).set(newUser);
       } catch (e) {
         console.warn("Failed to create Firestore profile. Auth succeeded, but DB restricted.", e);
       }
       setUser(newUser);
   }
 
-  const logout = () => signOut(auth);
+  const logout = () => auth.signOut();
 
   const resetPassword = async (email: string) => {
-    await sendPasswordResetEmail(auth, email);
+    await auth.sendPasswordResetEmail(email);
   };
 
   const startTrial = async () => {
@@ -118,8 +114,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const updatedUser: UserData = { ...user, plan: 'trial', trialEndDate: endDateStr };
     
     try {
-      const userDocRef = doc(db, 'users', user.id);
-      await updateDoc(userDocRef, {
+      await db.collection('users').doc(user.id).update({
         plan: 'trial',
         trialEndDate: endDateStr
       });
@@ -134,8 +129,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!user) return;
     const updatedUser: UserData = { ...user, plan: 'pro', trialEndDate: undefined };
     try {
-      const userDocRef = doc(db, 'users', user.id);
-      await updateDoc(userDocRef, {
+      await db.collection('users').doc(user.id).update({
         plan: 'pro',
         trialEndDate: null 
       });

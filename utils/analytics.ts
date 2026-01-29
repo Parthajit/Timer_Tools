@@ -1,4 +1,4 @@
-import { collection, addDoc, query, where, getDocs } from 'firebase/firestore';
+import { collection, addDoc, query, where, getDocs, orderBy } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
 
 export interface TimerSession {
@@ -46,18 +46,16 @@ export const logSession = async (
     tool,
     duration,
     started_at: new Date().toISOString(),
-    metadata: metadata || {}
+    metadata: metadata || {},
+    user_id: user?.uid || undefined
   };
 
   if (user) {
       try {
           const sessionsCol = collection(db, 'timer_sessions');
-          await addDoc(sessionsCol, {
-              ...sessionData,
-              user_id: user.uid,
-          });
+          await addDoc(sessionsCol, sessionData);
       } catch (e: any) {
-          console.warn("Storage permission denied or network error. Saving locally.", e.message);
+          console.warn("Firestore sync failed. Saving locally.", e.message);
           saveLocally(sessionData);
       }
   } else {
@@ -71,7 +69,11 @@ export const getSessions = async (): Promise<TimerSession[]> => {
   if (user) {
       try {
           const sessionsCol = collection(db, 'timer_sessions');
-          const q = query(sessionsCol, where('user_id', '==', user.uid));
+          const q = query(
+            sessionsCol, 
+            where('user_id', '==', user.uid),
+            orderBy('started_at', 'desc')
+          );
           const querySnapshot = await getDocs(q);
           
           const sessions: TimerSession[] = [];
@@ -79,15 +81,18 @@ export const getSessions = async (): Promise<TimerSession[]> => {
               sessions.push({ id: doc.id, ...doc.data() } as TimerSession);
           });
           
-          const local = getLocalSessions();
+          const local = getLocalSessions().filter(s => 
+            !s.metadata?.isMock && (s.user_id === user.uid || !s.user_id)
+          );
+          
           return [...sessions, ...local].sort((a, b) => 
             new Date(b.started_at).getTime() - new Date(a.started_at).getTime()
           );
       } catch (e: any) {
           console.warn("Analytics fetch failed. Fallback to local cache.", e.message);
-          return getLocalSessions().sort((a, b) => 
-            new Date(b.started_at).getTime() - new Date(a.started_at).getTime()
-          );
+          return getLocalSessions()
+            .filter(s => !s.metadata?.isMock && (s.user_id === user.uid || !s.user_id))
+            .sort((a, b) => new Date(b.started_at).getTime() - new Date(a.started_at).getTime());
       }
   } else {
       return getLocalSessions().sort((a, b) => 
@@ -110,13 +115,14 @@ export const generateMockData = () => {
     date.setDate(date.getDate() - daysAgo);
     
     const tool = tools[Math.floor(Math.random() * tools.length)];
-    let metadata: any = {};
+    let metadata: any = { isMock: true };
     let duration = Math.floor(Math.random() * 1000 * 60 * 45) + 5000;
 
     if (tool === 'interval') {
-        metadata = { rounds: 8, work: 20000, rest: 10000, rounds_completed: Math.floor(Math.random() * 8) + 1 };
+        metadata = { ...metadata, rounds: 8, work: 20000, rest: 10000, rounds_completed: Math.floor(Math.random() * 8) + 1 };
     } else if (tool === 'countdown') {
         metadata = { 
+          ...metadata,
           original_target: 300000, 
           completed: Math.random() > 0.4,
           pauses: Math.floor(Math.random() * 5)
@@ -126,6 +132,7 @@ export const generateMockData = () => {
         const avg = Math.floor(Math.random() * 50000) + 20000;
         const variance = Math.floor(Math.random() * 2000000);
         metadata = {
+            ...metadata,
             lapCount,
             averageLap: avg,
             consistency: Math.sqrt(variance),

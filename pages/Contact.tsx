@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { User, Mail, Phone, Send, CheckCircle2, ChevronLeft } from 'lucide-react';
 import { GoogleGenAI } from "@google/genai";
@@ -30,7 +31,8 @@ const Contact: React.FC = () => {
     
     try {
       // 1. Optional: Use Gemini to format the message professionally
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      // Initializing GoogleGenAI client following @google/genai guidelines
+      const ai = new GoogleGenAI({apiKey: process.env.API_KEY});
       const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
         contents: `Format this contact request into a clean professional email body:\n\nSender: ${formData.name}\nEmail: ${formData.email}\nPhone: ${formData.phone}\nMessage: ${formData.description}`,
@@ -38,6 +40,7 @@ const Contact: React.FC = () => {
           systemInstruction: "You are a professional assistant. Convert the raw message into a structured email body. Do not include a subject or sign-off."
         }
       });
+      // Extracting generated text using the .text property as per guidelines
       if (response.text) polishedMessage = response.text;
     } catch (error) {
       console.warn("AI formatting skipped.");

@@ -60,8 +60,12 @@ const Dashboard: React.FC = () => {
           new Date(curr.started_at) < new Date(prev.started_at) ? curr : prev
         );
         start = new Date(earliest.started_at);
+        // If the earliest session is very recent, show at least the last 30 days to make the chart look better
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(end.getDate() - 30);
+        if (start > thirtyDaysAgo) start = thirtyDaysAgo;
       } else {
-        start = new Date(2020, 0, 1);
+        start.setDate(end.getDate() - 30);
       }
     } else if (mode === 'week') {
       start.setDate(end.getDate() - 7);
